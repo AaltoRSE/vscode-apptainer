@@ -1,0 +1,44 @@
+#!/bin/bash
+
+
+_usage() {
+  # Print usage information
+  echo "Usage: code-app [DIRECTORY]"
+  echo "Open the specified DIRECTORY in VSCode using the VSCode Apptainer image. If no DIRECTORY is specified, the current directory will be opened."
+}
+
+
+_check_requirements() {
+  # Check if apptainer is installed
+  if ! command -v apptainer &> /dev/null; then
+    echo "Error: apptainer is not installed. Please install apptainer to use code-app."
+    exit 1
+  fi
+  # Check that VSCODE_APP_IMAGE environment variable is set
+  if [ -z "$VSCODE_APP_IMAGE" ]; then
+    echo "Error: VSCODE_APP_IMAGE environment variable is not set. Please set it to the path of the VSCode Apptainer image."
+    exit 1
+  fi
+  # Check that VSCODE_APP_HOME environment variable is set
+  if [ -z "$VSCODE_APP_HOME" ]; then
+    echo "Error: VSCODE_APP_HOME environment variable is not set. Please set it to the path of the VSCode home directory."
+    exit 1
+  fi
+  # Check that the VSCode Apptainer image exists
+  if [ ! -f "$VSCODE_APP_IMAGE" ]; then
+    echo "Error: The VSCode Apptainer image does not exist at $VSCODE_APP_IMAGE. Please make sure the image exists or update the VSCODE_APP_IMAGE environment variable to point to the correct location."
+    exit 1
+  fi
+  # Check that the VSCode home directory exists
+  if [ ! -d "$VSCODE_APP_HOME" ]; then
+    echo "Error: The VSCode home directory does not exist at $VSCODE_APP_HOME. Please make sure the directory exists or update the VSCODE_APP_HOME environment variable to point to the correct location."
+    exit 1
+  fi
+}
+
+_check_requirements
+
+# Take the first argument as the directory to open in VSCode, default is the current directory
+VSCODE_APP_DIR=${1:-$PWD}
+
+apptainer exec --no-home -B /run/dbus -B /run/user/$(id -u) -B "$VSCODE_APP_HOME":$HOME -B "$VSCODE_APP_DIR":/project --cwd /project "$VSCODE_APP_IMAGE" code --wait .
