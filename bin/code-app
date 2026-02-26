@@ -3,13 +3,31 @@
 
 _usage() {
   # Print usage information
-  echo "Usage: code-app [DIRECTORY] [EXTRA_ARGS]"
-  echo ""
-  echo "Open the specified DIRECTORY in VSCode using the VSCode Apptainer image."
-  echo "If no DIRECTORY is specified, the current directory will be opened."
-  echo "EXTRA_ARGS are any additional arguments you want to pass to the 'code' command inside the container."
+  cat << EOF
+  Usage: code-app [-h|--help] [-p|--projects-folder PROJECTS_FOLDER] [-i|--instance INSTANCE_NAME] [-s|--stop] [DIRECTORY] [EXTRA_ARGS]
+  
+  Open the specified DIRECTORY in VSCode using the VSCode Apptainer image.
+  
+  If PROJECTS_FOLDER is specified, it will be used as the main folder for projects.
+  Then DIRECTORY is expected to be relative to that directory.
+  If neither are given, the current directory will be used as the project folder.
+
+  EXTRA_ARGS are any additional arguments you want to pass to the 'code' command inside the container.
+  
+  Options:
+    -h, --help                Show this help message and exit.
+    -p, --projects-folder     Specify the main folder that you want to use for projects. This will be mounted to /project inside the container. If not specified, the DIRECTORY will be used as the project folder.
+    -i, --instance            Specify the instance name for the Apptainer instance. Default is 'code'.
+    -s, --stop                Stop the Apptainer instance.
+    --rm                      Stop the instance once the editor exits.
+  "
+  Example usage:
+    code-app -p ~/projects my-project
+    code-app .
+EOF
 }
 
+VSCODE_APP_HOME_DIR="$VSCODE_APP_DATA_DIR/home"
 
 _check_requirements() {
   # Check if apptainer is installed
@@ -22,9 +40,9 @@ _check_requirements() {
     echo "Error: VSCODE_APP_IMAGE environment variable is not set. Please set it to the path of the VSCode Apptainer image."
     exit 1
   fi
-  # Check that VSCODE_APP_HOME environment variable is set
-  if [ -z "$VSCODE_APP_HOME" ]; then
-    echo "Error: VSCODE_APP_HOME environment variable is not set. Please set it to the path of the VSCode home directory."
+  # Check that VSCODE_APP_DATA_DIR environment variable is set
+  if [ -z "$VSCODE_APP_DATA_DIR" ]; then
+    echo "Error: VSCODE_APP_DATA_DIR environment variable is not set. Please set it to the path of the VSCode data directory."
     exit 1
   fi
   # Check that the VSCode Apptainer image exists
@@ -32,33 +50,75 @@ _check_requirements() {
     echo "Error: The VSCode Apptainer image does not exist at $VSCODE_APP_IMAGE. Please make sure the image exists or update the VSCODE_APP_IMAGE environment variable to point to the correct location."
     exit 1
   fi
-  # Check that the VSCode home directory exists
-  if [ ! -d "$VSCODE_APP_HOME" ]; then
-    echo "Error: The VSCode home directory does not exist at $VSCODE_APP_HOME. Please make sure the directory exists or update the VSCODE_APP_HOME environment variable to point to the correct location."
+  # Check that the VSCode data directory exists
+  if [ ! -d "$VSCODE_APP_DATA_DIR" ]; then
+    echo "Error: The VSCode data directory does not exist at $VSCODE_APP_DATA_DIR. Please make sure the directory exists or update the VSCODE_APP_DATA_DIR environment variable to point to the correct location."
     exit 1
+  fi
+  # Check that VSCODE_APP_HOME_DIR exists, if not create it
+  if [ ! -d "$VSCODE_APP_HOME_DIR" ]; then
+    mkdir -p "$VSCODE_APP_HOME_DIR"
   fi
 }
 
 _check_requirements
 
-# Check arguments for help flag
-for arg in "$@"; do
-  case $arg in
+VSCODE_APP_PROJECT_DIR=""
+
+EXTRA_ARGS=()
+
+INSTANCE_NAME="code"
+
+VSCODE_APP_RM_ON_EXIT=""
+
+# Check arguments for help flag and projects folder flag
+while test $# -gt 0; do
+  case $1 in
     -h|--help)
       _usage
       exit 0
       ;;
+    -p|--projects-folder)
+      # Store project folder
+      VSCODE_APP_PROJECT_DIR="$2"
+      shift 2
+      ;;
+    -i|--instance)
+      # Store instance name
+      INSTANCE_NAME="$2"
+      shift 2
+      ;;
+    -s|--stop)
+      # Stop the apptainer instance
+      apptainer instance stop "$INSTANCE_NAME"
+      exit 0
+      ;;
+    --rm)
+      # Stop the instance once the editor exists
+      VSCODE_APP_RM_ON_EXIT="true"
+      shift
+      ;;
     *)
       # Skip other arguments for now, we will capture them later
+      EXTRA_ARGS+=("$1")
+      shift
       ;;
   esac
 done
 
 # Take the first argument as the directory to open in VSCode, default is the current directory
-VSCODE_APP_PROJECT_DIR=${1:-$PWD}
+if [[ -z "$VSCODE_APP_PROJECT_DIR" ]]; then
+  VSCODE_APP_PROJECT_DIR=${EXTRA_ARGS[0]:-$PWD}
+  EXTRA_ARGS=("${EXTRA_ARGS[@]:1}")
+fi
 
-# Capture extra args
-EXTRA_ARGS="${@:2}"
+# If extra arguments is empty, set it to the current folder
+if [[ ${#EXTRA_ARGS[@]} -eq 0 ]]; then
+  EXTRA_ARGS=(".")
+fi
+
+# Determine real path for the VSCODE_APP_PROJECT_DIR
+VSCODE_APP_PROJECT_DIR=$(realpath "$VSCODE_APP_PROJECT_DIR")
 
 # Check that the specified directory exists
 if [ ! -d "$VSCODE_APP_PROJECT_DIR" ]; then
@@ -66,4 +126,15 @@ if [ ! -d "$VSCODE_APP_PROJECT_DIR" ]; then
   exit 1
 fi
 
-apptainer exec --no-home -B /run/dbus -B /run/user/$(id -u) -B "$VSCODE_APP_HOME":$HOME -B "$VSCODE_APP_PROJECT_DIR":/project --cwd /project "$VSCODE_APP_IMAGE" code --wait . $EXTRA_ARGS
+# Check if the apptainer instance is already running, if not start it
+if ! apptainer instance list | cut -f 1 -d ' ' | grep -qP "^$INSTANCE_NAME$"; then
+  apptainer instance start --no-home -B /run/dbus -B /run/user/$(id -u) -B "$VSCODE_APP_HOME_DIR":$HOME -B "$VSCODE_APP_PROJECT_DIR":/project $VSCODE_APP_IMAGE "$INSTANCE_NAME"
+fi
+
+# Start vscode in the instance
+apptainer exec --cwd /project instance://"$INSTANCE_NAME" code --wait "${EXTRA_ARGS[@]}"
+
+# Stop the apptainer instance
+if [[ "$VSCODE_APP_RM_ON_EXIT" == "true" ]]; then
+  apptainer instance stop "$INSTANCE_NAME"
+fi
