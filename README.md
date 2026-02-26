@@ -36,7 +36,20 @@ After running the installation and exporting the environment variables, you can 
 code-app DIRECTORY
 ```
 
-where `DIRECTORY` is the folder you want to mount to `/project` inside the container.
+where `DIRECTORY` is the folder you want to mount to `/project` inside the container. The editor will run in
+an Apptainer instance. To stop the instance, run:
+
+```sh
+code-app -s
+```
+
+You can also mount a folder with multiple project folders into the editor with
+```sh
+code-app -p /my/project/folder project1
+```
+where `project1` would be a subfolder of your project folder.
+
+Then you can launch new windows in VSCode for different workspaces in that folder.
 
 ### Without install.sh and code-app
 
