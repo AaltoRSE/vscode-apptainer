@@ -9,6 +9,12 @@ if [ -z "$LATEST_TAG" ]; then
 	exit 1
 fi
 
+# Check that apptainer is installed
+if ! command -v apptainer &> /dev/null; then
+    echo "Error: apptainer is not installed. Please install apptainer."
+    exit 1
+fi
+
 # Ask where to install code-app, default is ~/.local/bin
 read -p "Where do you want to install code-app? [~/.local/bin]: " VSCODE_APP_DIR
 VSCODE_APP_DIR=${VSCODE_APP_DIR:-$HOME/.local/bin}
@@ -52,7 +58,9 @@ fi
 
 # Print export statements that should be added to the user's shell configuration file
 echo "Add the following lines to your shell configuration file (e.g., ~/.bashrc or ~/.zshrc) to set up the environment variables for code-app:"
+echo ""
 echo "export PATH=\"$VSCODE_APP_DIR:\$PATH\""
 echo "export VSCODE_APP_IMAGE=$VSCODE_APP_IMAGE"
 echo "export VSCODE_APP_HOME=$VSCODE_APP_HOME"
+echo ""
 echo "Make sure to source your shell configuration file after adding these lines to apply the changes."

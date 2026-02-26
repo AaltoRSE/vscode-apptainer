@@ -3,8 +3,11 @@
 
 _usage() {
   # Print usage information
-  echo "Usage: code-app [DIRECTORY]"
-  echo "Open the specified DIRECTORY in VSCode using the VSCode Apptainer image. If no DIRECTORY is specified, the current directory will be opened."
+  echo "Usage: code-app [DIRECTORY] [EXTRA_ARGS]"
+  echo ""
+  echo "Open the specified DIRECTORY in VSCode using the VSCode Apptainer image."
+  echo "If no DIRECTORY is specified, the current directory will be opened."
+  echo "EXTRA_ARGS are any additional arguments you want to pass to the 'code' command inside the container."
 }
 
 
@@ -38,7 +41,29 @@ _check_requirements() {
 
 _check_requirements
 
-# Take the first argument as the directory to open in VSCode, default is the current directory
-VSCODE_APP_DIR=${1:-$PWD}
+# Check arguments for help flag
+for arg in "$@"; do
+  case $arg in
+    -h|--help)
+      _usage
+      exit 0
+      ;;
+    *)
+      # Skip other arguments for now, we will capture them later
+      ;;
+  esac
+done
 
-apptainer exec --no-home -B /run/dbus -B /run/user/$(id -u) -B "$VSCODE_APP_HOME":$HOME -B "$VSCODE_APP_DIR":/project --cwd /project "$VSCODE_APP_IMAGE" code --wait .
+# Take the first argument as the directory to open in VSCode, default is the current directory
+VSCODE_APP_PROJECT_DIR=${1:-$PWD}
+
+# Capture extra args
+EXTRA_ARGS="${@:2}"
+
+# Check that the specified directory exists
+if [ ! -d "$VSCODE_APP_PROJECT_DIR" ]; then
+  echo "Error: $VSCODE_APP_PROJECT_DIR does not exist. Please make sure the directory exists."
+  exit 1
+fi
+
+apptainer exec --no-home -B /run/dbus -B /run/user/$(id -u) -B "$VSCODE_APP_HOME":$HOME -B "$VSCODE_APP_PROJECT_DIR":/project --cwd /project "$VSCODE_APP_IMAGE" code --wait . $EXTRA_ARGS
