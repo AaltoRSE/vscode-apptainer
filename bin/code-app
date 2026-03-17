@@ -16,14 +16,18 @@ _usage() {
   
   Options:
     -h, --help                Show this help message and exit.
-    -p, --projects-folder     Specify the main folder that you want to use for projects. This will be mounted to /project inside the container. If not specified, the DIRECTORY will be used as the project folder.
+    -p, --projects-folder     Specify the main folder that you want to use for projects. This will be mounted to /project inside the container. If not specified, the DIRECTORY will be used as the project folder. This can also be set with environment variable VSCODE_APP_PROJECT_DIR.
     -i, --instance            Specify the instance name for the Apptainer instance. Default is 'code'.
     -s, --stop                Stop the Apptainer instance.
-    --rm                      Stop the instance once the editor exits.
+    -d, --debug               Print debug information.
+    --wait                    Wait for the editor to exit.
+    --rm                      Stop the instance once the editor exits. Implies --wait.
+    --code-help               Pass the --help flag to the 'code' command inside the container.
   "
   Example usage:
     code-app -p ~/projects my-project
     code-app .
+    VSCODE_APP_PROJECT_DIR=~/projects code-app my-project
 EOF
 }
 
@@ -63,13 +67,11 @@ _check_requirements() {
 
 _check_requirements
 
-VSCODE_APP_PROJECT_DIR=""
+VSCODE_APP_PROJECT_DIR="${VSCODE_APP_PROJECT_DIR:-$VSCODE_APP_PROJECT_DIR}"
 
 EXTRA_ARGS=()
 
 INSTANCE_NAME="code"
-
-VSCODE_APP_RM_ON_EXIT=""
 
 # Check arguments for help flag and projects folder flag
 while test $# -gt 0; do
@@ -90,12 +92,25 @@ while test $# -gt 0; do
       ;;
     -s|--stop)
       # Stop the apptainer instance
-      apptainer instance stop "$INSTANCE_NAME"
+      if apptainer instance list | cut -f 1 -d ' ' | grep -qP "^$INSTANCE_NAME$"; then
+        apptainer instance stop "$INSTANCE_NAME"
+      fi
       exit 0
+      ;;
+    -d|--debug)
+      # Enable debug mode
+      VSCODE_APP_DEBUG="true"
+      shift
+      ;;
+    --wait)
+      # Wait for the editor to exit
+      VSCODE_APP_WAIT="true"
+      shift
       ;;
     --rm)
       # Stop the instance once the editor exists
       VSCODE_APP_RM_ON_EXIT="true"
+      VSCODE_APP_WAIT="true"
       shift
       ;;
     *)
@@ -106,24 +121,54 @@ while test $# -gt 0; do
   esac
 done
 
-# Take the first argument as the directory to open in VSCode, default is the current directory
-if [[ -z "$VSCODE_APP_PROJECT_DIR" ]]; then
-  VSCODE_APP_PROJECT_DIR=${EXTRA_ARGS[0]:-$PWD}
-  EXTRA_ARGS=("${EXTRA_ARGS[@]:1}")
+# If extra arguments is empty, add the current directory to it
+if [[ ${#EXTRA_ARGS[@]} -eq 0 ]]; then
+  EXTRA_ARGS+=("$PWD")
 fi
 
-# If extra arguments is empty, set it to the current folder
-if [[ ${#EXTRA_ARGS[@]} -eq 0 ]]; then
-  EXTRA_ARGS=(".")
+# Capture launch directory from the extra arguments
+VSCODE_APP_LAUNCH_DIR=$(realpath "${EXTRA_ARGS[0]}")
+EXTRA_ARGS=("${EXTRA_ARGS[@]:1}")
+
+# Check that the launch directory exists
+if [ ! -d "$VSCODE_APP_LAUNCH_DIR" ]; then
+  echo "Error: $VSCODE_APP_LAUNCH_DIR does not exist. Please make sure the directory exists."
+  exit 1
+fi
+
+# If VSCODE_APP_PROJECT_DIR is not set, use the launch directory as the project directory
+if [ -z "$VSCODE_APP_PROJECT_DIR" ]; then
+  VSCODE_APP_PROJECT_DIR=$VSCODE_APP_LAUNCH_DIR
+fi
+
+# Check that the project directory exists
+if [ ! -d "$VSCODE_APP_PROJECT_DIR" ]; then
+  echo "Error: $VSCODE_APP_PROJECT_DIR does not exist. Please make sure the directory exists."
+  exit 1
 fi
 
 # Determine real path for the VSCODE_APP_PROJECT_DIR
 VSCODE_APP_PROJECT_DIR=$(realpath "$VSCODE_APP_PROJECT_DIR")
 
-# Check that the specified directory exists
-if [ ! -d "$VSCODE_APP_PROJECT_DIR" ]; then
-  echo "Error: $VSCODE_APP_PROJECT_DIR does not exist. Please make sure the directory exists."
+# Check that the launch directory is within the project directory or $VSCODE_APP_HOME_DIR folder
+if [[ "$VSCODE_APP_LAUNCH_DIR" != "$VSCODE_APP_PROJECT_DIR"* && "$VSCODE_APP_LAUNCH_DIR" != "$VSCODE_APP_HOME_DIR"* ]]; then
+  echo "Error: The launch directory $VSCODE_APP_LAUNCH_DIR is not within the project directory $VSCODE_APP_PROJECT_DIR or the fake home directory $VSCODE_APP_HOME_DIR. Please make sure the launch directory is within the project directory or the home directory."
   exit 1
+fi
+
+# Change the launch directory to be relative path towards /project or /home in the container
+VSCODE_APP_LAUNCH_DIR_ORIGINAL="$VSCODE_APP_LAUNCH_DIR"
+VSCODE_APP_LAUNCH_DIR=`echo "$VSCODE_APP_LAUNCH_DIR" | sed "s|$VSCODE_APP_PROJECT_DIR/||g" | sed "s|$VSCODE_APP_HOME_DIR|$HOME|g"`
+
+# Debug prints
+if [[ ! -z "$VSCODE_APP_DEBUG" ]]; then
+  echo "VSCODE_APP_LAUNCH_DIR:" $VSCODE_APP_LAUNCH_DIR_ORIGINAL
+  echo "VSCODE_APP_LAUNCH_DIR (within container):" $VSCODE_APP_LAUNCH_DIR
+  echo "VSCODE_APP_PROJECT_DIR:" $VSCODE_APP_PROJECT_DIR
+  echo "VSCODE_APP_PROJECT_DIR (within container): /project"
+  echo "VSCODE_APP_HOME_DIR:" $VSCODE_APP_HOME_DIR
+  echo "VSCODE_APP_HOME_DIR (within container: /home):" $HOME
+  set -x
 fi
 
 # Check if the apptainer instance is already running, if not start it
@@ -132,9 +177,14 @@ if ! apptainer instance list | cut -f 1 -d ' ' | grep -qP "^$INSTANCE_NAME$"; th
 fi
 
 # Start vscode in the instance
-apptainer exec --cwd /project instance://"$INSTANCE_NAME" code --wait "${EXTRA_ARGS[@]}"
+apptainer exec --cwd /project instance://"$INSTANCE_NAME" code --wait "$VSCODE_APP_LAUNCH_DIR" "${EXTRA_ARGS[@]}" &
+
+# Wait on exit of the editor if the flag is set
+if [[ ! -z "$VSCODE_APP_WAIT" ]]; then
+  wait $!
+fi
 
 # Stop the apptainer instance
-if [[ "$VSCODE_APP_RM_ON_EXIT" == "true" ]]; then
+if [[ ! -z "$VSCODE_APP_RM_ON_EXIT" ]]; then
   apptainer instance stop "$INSTANCE_NAME"
 fi

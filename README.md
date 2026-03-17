@@ -15,6 +15,10 @@ The whole things works like this:
 3. For the graphical use and for access to your keyring etc. `/run/dbus` and `/run/user/$UID` are mounted into the container.
 4. The project folder you want to work on will be mapped to `/project`, which will be used as the starting directory and VSCode will open that directory.
 
+## Changelog
+
+- [0.3.0]: Improvements to multiple project handling. Allow setting `VSCODE_APP_PROJECT_DIR` via environment variable. Allow launches relative to `VSCODE_APP_PROJECT_DIR` or fake home folder `VSCODE_APP_DATA_DIR/home`.
+
 ## Installation and usage
 
 ### With install.sh and with code-app
@@ -43,11 +47,21 @@ an Apptainer instance. To stop the instance, run:
 code-app -s
 ```
 
+If you want the instance to stop when editor closes, run it with
+```sh
+code-app --rm DIRECTORY
+```
+
 You can also mount a folder with multiple project folders into the editor with
 ```sh
 code-app -p /my/project/folder project1
 ```
-where `project1` would be a subfolder of your project folder.
+or
+```sh
+export VSCODE_APP_PROJECT_DIR=/my/project/folder
+code-app project1
+```
+where `project1` would be a subfolder of your project folder. Absolute paths are turned into relative paths inside the container.
 
 Then you can launch new windows in VSCode for different workspaces in that folder.
 
