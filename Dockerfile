@@ -45,9 +45,9 @@ RUN apt-get update && \
   rm ./google-chrome-stable_current_amd64.deb && \
   rm -rf /var/lib/apt/lists/*
 
-# Install git
+# Install basic command line tools
 RUN apt-get update && \
-  apt-get install -y git && \
+  apt-get install -y git vim nano bash zsh && \
   rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /project

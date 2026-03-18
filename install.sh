@@ -16,7 +16,7 @@ if ! command -v apptainer &> /dev/null; then
 fi
 
 # Ask where to install vscode-apptainer, default is ~/.local/
-read -p "Where do you want to install code-app? [~/.local/bin]: " VSCODE_APP_DIR
+read -p "Where do you want to install code-app and code-shell? [~/.local/bin]: " VSCODE_APP_DIR
 VSCODE_CODE_APP_DIR=${VSCODE_APP_DIR:-$HOME/.local/bin}
 mkdir -p "$VSCODE_CODE_APP_DIR"
 
@@ -24,6 +24,11 @@ mkdir -p "$VSCODE_CODE_APP_DIR"
 echo "Downloading code-app from $REPO_URL with tag $LATEST_TAG..."
 curl -L https://raw.githubusercontent.com/$REPO_URL/$LATEST_TAG/bin/code-app -o $VSCODE_CODE_APP_DIR/code-app
 chmod +x $VSCODE_CODE_APP_DIR/code-app
+
+# Download the latest release of code-shell from GitHub and install it to $VSCODE_APP_DIR
+echo "Downloading code-shell from $REPO_URL with tag $LATEST_TAG..."
+curl -L https://raw.githubusercontent.com/$REPO_URL/$LATEST_TAG/bin/code-shell -o $VSCODE_CODE_APP_DIR/code-shell
+chmod +x $VSCODE_CODE_APP_DIR/code-shell
 
 # Ask where to store the vscode-apptainer, default is ~/.local/share/code-app
 read -p "Where do you want to store the VSCode Apptainer image and settings? [~/.local/share/code-app]: " VSCODE_APP_DATA_DIR
