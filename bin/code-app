@@ -17,9 +17,12 @@ _usage() {
   Options:
     -h, --help                Show this help message and exit.
     -p, --projects-folder     Specify the main folder that you want to use for projects.
-                              This will be mounted to /project inside the container.
+                              This will be mounted to a project mount folder inside the container.
                               If not specified, the DIRECTORY will be used as the project folder.
                               This can also be set with environment variable VSCODE_APP_PROJECT_DIR.
+    -m, --projects-mount      Specify the mount point in the image for the projects folder.
+                              Default is /project. This can also be set with environment variable
+                              VSCODE_APP_PROJECT_MOUNT. Mount point needs to exist in the container image.
     -i, --instance            Specify the instance name for the Apptainer instance. Default is 'code'.
     -n, --no-instance         Do not use an Apptainer instance. Default is to use an instance.
     -c, --container-paths     Consider DIRECTORY to be a path as it would be appear inside the container.
@@ -30,7 +33,7 @@ _usage() {
     --wait                    Wait for the editor to exit.
     --rm                      Stop the instance once the editor exits. Implies --wait.
     --code-help               Pass the --help flag to the 'code' command inside the container.
-  "
+  
   Example usage:
     code-app -p ~/projects my-project
     code-app .
@@ -76,6 +79,7 @@ _check_requirements() {
 _check_requirements
 
 VSCODE_APP_PROJECT_DIR="${VSCODE_APP_PROJECT_DIR:-$VSCODE_APP_PROJECT_DIR}"
+VSCODE_APP_PROJECT_MOUNT="${VSCODE_APP_PROJECT_MOUNT:-/project}"
 
 EXTRA_ARGS=()
 
@@ -91,6 +95,11 @@ while test $# -gt 0; do
     -p|--projects-folder)
       # Store project folder
       VSCODE_APP_PROJECT_DIR="$2"
+      shift 2
+      ;;
+    -m|--projects-mount)
+      # Store project mount point
+      VSCODE_APP_PROJECT_MOUNT="$2"
       shift 2
       ;;
     -i|--instance)
@@ -152,12 +161,11 @@ if [[ ! -z "$VSCODE_CONTAINER_PATHS" ]]; then
     echo "Converting container paths to host paths:"
     echo "VSCODE_APP_LAUNCH_DIR (original):             " $VSCODE_APP_LAUNCH_DIR
   fi
-  VSCODE_APP_LAUNCH_DIR=`echo "$VSCODE_APP_LAUNCH_DIR" | sed "s|/project|$VSCODE_APP_PROJECT_DIR|g" | sed "s|$HOME|$VSCODE_APP_HOME_DIR|g"`
+  VSCODE_APP_LAUNCH_DIR=`echo "$VSCODE_APP_LAUNCH_DIR" | sed "s|$VSCODE_APP_PROJECT_MOUNT|$VSCODE_APP_PROJECT_DIR|g" | sed "s|$HOME|$VSCODE_APP_HOME_DIR|g"`
   if [[ ! -z "$VSCODE_APP_DEBUG" ]]; then
     echo "VSCODE_APP_LAUNCH_DIR (converted):            " $VSCODE_APP_LAUNCH_DIR
   fi
 fi
-
 
 # Check that the launch directory exists
 if [ ! -d "$VSCODE_APP_LAUNCH_DIR" ]; then
@@ -185,9 +193,9 @@ if [[ "$VSCODE_APP_LAUNCH_DIR" != "$VSCODE_APP_PROJECT_DIR"* && "$VSCODE_APP_LAU
   exit 1
 fi
 
-# Change the launch directory to be relative path towards /project or /home in the container
+# Change the launch directory to be relative path towards project folder or /home in the container
 VSCODE_APP_LAUNCH_DIR_ORIGINAL="$VSCODE_APP_LAUNCH_DIR"
-VSCODE_APP_LAUNCH_DIR=`echo "$VSCODE_APP_LAUNCH_DIR" | sed "s|$VSCODE_APP_PROJECT_DIR|/project|g" | sed "s|$VSCODE_APP_HOME_DIR|$HOME|g"`
+VSCODE_APP_LAUNCH_DIR=`echo "$VSCODE_APP_LAUNCH_DIR" | sed "s|$VSCODE_APP_PROJECT_DIR|$VSCODE_APP_PROJECT_MOUNT|g" | sed "s|$VSCODE_APP_HOME_DIR|$HOME|g"`
 
 # Debug prints
 if [[ ! -z "$VSCODE_APP_DEBUG" ]]; then
@@ -195,7 +203,7 @@ if [[ ! -z "$VSCODE_APP_DEBUG" ]]; then
   echo "VSCODE_APP_LAUNCH_DIR:                        " $VSCODE_APP_LAUNCH_DIR_ORIGINAL
   echo "VSCODE_APP_LAUNCH_DIR (within container):     " $VSCODE_APP_LAUNCH_DIR
   echo "VSCODE_APP_PROJECT_DIR:                       " $VSCODE_APP_PROJECT_DIR
-  echo "VSCODE_APP_PROJECT_DIR (within container):     /project"
+  echo "VSCODE_APP_PROJECT_DIR (within container):    " $VSCODE_APP_PROJECT_MOUNT
   echo "VSCODE_APP_HOME_DIR:                          " $VSCODE_APP_HOME_DIR
   echo "VSCODE_APP_HOME_DIR (within container: /home):" $HOME
   echo "VSCODE_APP_TERMINAL:                          " $VSCODE_APP_TERMINAL
@@ -213,12 +221,12 @@ if [[ -d "/run/dbus" ]]; then
 fi
 
 # Add the project directory and fake home directory to the binds
-export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}$VSCODE_APP_PROJECT_DIR:/project"
+export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}$VSCODE_APP_PROJECT_DIR:$VSCODE_APP_PROJECT_MOUNT"
 export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}$VSCODE_APP_HOME_DIR:$HOME"
 
 if [[ ! -z "$VSCODE_NO_INSTANCE" ]]; then
   # Start vscode in the container without using an instance
-  apptainer exec --no-home --cwd /project $VSCODE_APP_IMAGE code --wait "$VSCODE_APP_LAUNCH_DIR" "${EXTRA_ARGS[@]}"
+  apptainer exec --no-home --cwd $VSCODE_APP_PROJECT_MOUNT $VSCODE_APP_IMAGE code --wait "$VSCODE_APP_LAUNCH_DIR" "${EXTRA_ARGS[@]}"
 else
   # Check if the apptainer instance is already running, if not start it
   if ! apptainer instance list | cut -f 1 -d ' ' | grep -qP "^$INSTANCE_NAME$"; then
@@ -226,7 +234,7 @@ else
   fi
 
   # Start vscode in the instance
-  apptainer exec --cwd /project instance://"$INSTANCE_NAME" code --wait "$VSCODE_APP_LAUNCH_DIR" "${EXTRA_ARGS[@]}" &
+  apptainer exec --cwd $VSCODE_APP_PROJECT_MOUNT instance://"$INSTANCE_NAME" code --wait "$VSCODE_APP_LAUNCH_DIR" "${EXTRA_ARGS[@]}" &
 
   # Wait on exit of the editor if the flag is set
   if [[ ! -z "$VSCODE_APP_WAIT" ]]; then
