@@ -22,7 +22,7 @@ _usage() {
                               This can also be set with environment variable VSCODE_APP_PROJECT_DIR.
     -m, --projects-mount      Specify the mount point in the image for the projects folder.
                               Default is /project. This can also be set with environment variable
-                              VSCODE_APP_PROJECT_MOUNT. Mount point needs to exist in the container image.
+                              VSCODE_APP_PROJECT_MOUNT.
     -i, --instance            Specify the instance name for the Apptainer instance. Default is 'code'.
     -n, --no-instance         Do not use an Apptainer instance. Default is to use an instance.
     -c, --container-paths     Consider DIRECTORY to be a path as it would be appear inside the container.
