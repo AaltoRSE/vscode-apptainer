@@ -5,9 +5,9 @@ _usage() {
   # Print usage information
   cat << EOF
   Usage: code-shell [-h|--help] [-p|--projects-folder PROJECTS_FOLDER] [-t|--terminal TERMINAL] [-i|--instance INSTANCE_NAME] [-s|--stop] [DIRECTORY]
-  
+
   Open a terminal in the specified DIRECTORY using the VSCode Apptainer image.
-  
+
   If PROJECTS_FOLDER is specified, it will be used as the main folder for projects.
   Then DIRECTORY is expected to be relative to that directory.
   If neither are given, the current directory will be used as the project folder.
@@ -20,6 +20,7 @@ _usage() {
                               This can also be set with environment variable VSCODE_APP_PROJECT_DIR.
     -t, --terminal            Specify the terminal to use inside the container. Default is /bin/bash.
     -i, --instance            Specify the instance name for the Apptainer instance. Default is 'code'.
+    -n, --no-instance         Do not use an Apptainer instance. Default is to use an instance.
     -c, --container-paths     Consider DIRECTORY to be a path as it would be appear inside the container.
                               E.g. /project/my-project would be converted to the corresponding host
                               path before launching the container.
@@ -98,6 +99,10 @@ while test $# -gt 0; do
       ;;
     -c|--container-paths)
       VSCODE_CONTAINER_PATHS="true"
+      shift
+      ;;
+    -n|--no-instance)
+      VSCODE_NO_INSTANCE="true"
       shift
       ;;
     -s|--stop)
@@ -194,15 +199,34 @@ if [[ ! -z "$VSCODE_APP_DEBUG" ]]; then
   set -x
 fi
 
-# Check if the apptainer instance is already running, if not start it
-if ! apptainer instance list | cut -f 1 -d ' ' | grep -qP "^$INSTANCE_NAME$"; then
-  apptainer instance start --no-home -B /run/dbus -B /run/user/$(id -u) -B "$VSCODE_APP_HOME_DIR":$HOME -B "$VSCODE_APP_PROJECT_DIR":/project $VSCODE_APP_IMAGE "$INSTANCE_NAME"
+# Check if /run/user/$(id -u) exists and mount it if it does.
+if [[ -d "/run/user/$(id -u)" ]]; then
+  export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}/run/user/$(id -u)"
 fi
 
-# Start vscode in the instance
-apptainer shell --cwd "$VSCODE_APP_LAUNCH_DIR" --shell $VSCODE_APP_TERMINAL instance://"$INSTANCE_NAME"
+# Check if /run/dbus exists and mount it if it does.
+if [[ -d "/run/dbus" ]]; then
+  export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}/run/dbus"
+fi
 
-# Stop the apptainer instance
-if [[ ! -z "$VSCODE_APP_RM_ON_EXIT" ]]; then
-  apptainer instance stop "$INSTANCE_NAME"
+# Add the project directory and fake home directory to the binds
+export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}$VSCODE_APP_PROJECT_DIR:/project"
+export APPTAINER_BIND="${APPTAINER_BIND}${APPTAINER_BIND:+,}$VSCODE_APP_HOME_DIR:$HOME"
+
+if [[ ! -z "$VSCODE_NO_INSTANCE" ]]; then
+  # Start shell in the container without using an instance
+  apptainer shell --no-home --cwd "$VSCODE_APP_LAUNCH_DIR" --shell "$VSCODE_APP_TERMINAL" $VSCODE_APP_IMAGE
+else
+  # Check if the apptainer instance is already running, if not start it
+  if ! apptainer instance list | cut -f 1 -d ' ' | grep -qP "^$INSTANCE_NAME$"; then
+    apptainer instance start --no-home  $VSCODE_APP_IMAGE "$INSTANCE_NAME"
+  fi
+
+  # Start shell in the instance
+  apptainer shell --cwd "$VSCODE_APP_LAUNCH_DIR" --shell $VSCODE_APP_TERMINAL instance://"$INSTANCE_NAME"
+
+  # Stop the apptainer instance
+  if [[ ! -z "$VSCODE_APP_RM_ON_EXIT" ]]; then
+    apptainer instance stop "$INSTANCE_NAME"
+  fi
 fi
