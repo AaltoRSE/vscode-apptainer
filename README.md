@@ -65,6 +65,13 @@ where `project1` would be a subfolder of your project folder. Absolute paths are
 
 Then you can launch new windows in VSCode for different workspaces in that folder.
 
+You can also run `code-shell` to get a terminal into the instance: 
+```sh
+code-shell project1
+```
+
+In a system where you do not have a dbus you can also run both commands without using instances by specifying the `-n/--no-instance`-flag.
+
 ### Without install.sh and code-app
 
 If you do not want to use the install script, you can the same with the following commands:
