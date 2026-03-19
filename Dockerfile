@@ -31,11 +31,11 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/*
 
 RUN sed -i -e 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && \
-    sed -i -e 's/# en_GB.UTF-8/en_GB.UTF-8/' /etc/locale.gen && \
-    sed -i -e 's/# fi_FI.UTF-8/fi_FI.UTF-8/' /etc/locale.gen && \
-    sed -i -e 's/# fi_FI ISO-8859-1/fi_FI ISO-8859-1/' /etc/locale.gen && \
-    dpkg-reconfigure locales && \
-    update-locale LANG=en_US.UTF-8
+  sed -i -e 's/# en_GB.UTF-8/en_GB.UTF-8/' /etc/locale.gen && \
+  sed -i -e 's/# fi_FI.UTF-8/fi_FI.UTF-8/' /etc/locale.gen && \
+  sed -i -e 's/# fi_FI ISO-8859-1/fi_FI ISO-8859-1/' /etc/locale.gen && \
+  dpkg-reconfigure locales && \
+  update-locale LANG=en_US.UTF-8
 
 # Add Google Chrome for logging into Github Copilot
 RUN apt-get update && \
@@ -47,7 +47,24 @@ RUN apt-get update && \
 
 # Install basic command line tools
 RUN apt-get update && \
-  apt-get install -y git vim nano bash zsh && \
+  apt-get install -y git vim nano bash zsh jq ripgrep && \
   rm -rf /var/lib/apt/lists/*
 
-RUN mkdir /project
+ARG CODEX_VERSION=0.115.0
+
+# Install codex
+RUN wget -q https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-x86_64-unknown-linux-musl.tar.gz && \
+  tar -xzf codex-x86_64-unknown-linux-musl.tar.gz -C /usr/local/bin && \
+  mv /usr/local/bin/codex-x86_64-unknown-linux-musl /usr/local/bin/codex && \
+  chmod +x /usr/local/bin/codex && \
+  rm codex-x86_64-unknown-linux-musl.tar.gz
+
+# Install claude
+RUN curl -fsSL https://claude.ai/install.sh | bash && \
+  CLAUDE_TARGET=`readlink /root/.local/bin/claude | sed 's:/root/.local:/usr/local:g'` && \
+  rm /root/.local/bin/claude && \
+  mv /root/.local/share/claude /usr/local/share/claude && \
+  ln -s $CLAUDE_TARGET /usr/local/bin/claude
+
+# Create typical mount points
+RUN mkdir -p /project /scratch /local /l /m /u
