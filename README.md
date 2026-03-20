@@ -1,5 +1,7 @@
 # vscode-apptainer
 
+![A diagram showing how vscode-apptainer works. code-shell/code-app start a vscode-apptainer instance, which mounts a project folder and a fake home folder. Project folder contains a repository user wants to use. It then launches code or bash and those use the mount points.](./docs/vscode-apptainer.png)
+
 ## About this repository
 
 This repository contains a Dockerfile and a couple of scripts that make it
