@@ -19,7 +19,10 @@ The whole things works like this:
 
 ## Changelog
 
-- [0.3.0]: Improvements to multiple project handling. Allow setting `VSCODE_APP_PROJECT_DIR` via environment variable. Allow launches relative to `VSCODE_APP_PROJECT_DIR` or fake home folder `VSCODE_APP_DATA_DIR/home`.
+- [v0.6.0]: Added possibility of setting custom project mount point. Added Codex CLI and Claude CLI to the image.
+- [v0.5.0]: Added flags for launching the shell / app without an Apptainer instance.
+- [v0.4.0]: Added [code-shell](./bin/code-shell) command.
+- [v0.3.0]: Improvements to multiple project handling. Allow setting `VSCODE_APP_PROJECT_DIR` via environment variable. Allow launches relative to `VSCODE_APP_PROJECT_DIR` or fake home folder `VSCODE_APP_DATA_DIR/home`.
 
 ## Installation and usage
 
